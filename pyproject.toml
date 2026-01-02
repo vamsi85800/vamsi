@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genai_project"
+version = "0.1.0"
+description = "A basic Python project scaffold for GenAI work"
+authors = [ { name = "Your Name", email = "you@example.com" } ]
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.8"
+dependencies = []
+
+[project.urls]
+Homepage = "https://example.com"
