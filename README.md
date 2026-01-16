@@ -25,12 +25,13 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-4. Copy `.env.example` to `.env` and set your `OPENAI_API_KEY` and optional values:
+4. Set your `OPENAI_API_KEY` environment variable:
 
 ```
-cp .env.example .env
-# then edit .env and set OPENAI_API_KEY
+export OPENAI_API_KEY=sk-...
 ```
+
+Or pass it programmatically via `LLMConfig(api_key="sk-...")` when initializing the API.
 
 ## Running the API
 
@@ -84,9 +85,9 @@ Run tests:
 pytest -q
 ```
 
-## Env / config
+## Configuration
 
-See `.env.example` for required keys (notably `OPENAI_API_KEY`).
+The application reads the `OPENAI_API_KEY` from the `OPENAI_API_KEY` environment variable. Other configuration options (API base, model, token limits, cost estimates) can be customized via the `LLMConfig` class in `src/genai_project/llm.py`.
 
 **CI note:** If you add `OPENAI_API_KEY` as a repository Secret in GitHub (Settings → Secrets), the CI workflow will run a real smoke test that calls the OpenAI API — this will incur API usage and costs. The smoke test sends a very short prompt and sets `max_tokens=8` to limit cost. If the secret is not set, the CI will skip the real smoke test.
 
