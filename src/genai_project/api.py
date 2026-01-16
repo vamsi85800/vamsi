@@ -3,9 +3,12 @@ from pydantic import BaseModel, Field
 from typing import List
 import time
 
-from .llm import call_llm, estimate_cost, settings
+from .llm import call_llm, estimate_cost, LLMConfig
 
 app = FastAPI(title="Multi-Task Text Utility", version="0.1.0")
+
+# Initialize LLM config once at app startup
+llm_config = LLMConfig()
 
 
 class QueryRequest(BaseModel):
@@ -37,13 +40,12 @@ class FullResponse(BaseModel):
 async def query(req: QueryRequest):
     start = time.perf_counter()
     try:
-        parsed, usage = await call_llm(req.question, max_tokens=req.max_tokens)
+        parsed, usage = await call_llm(req.question, config=llm_config, max_tokens=req.max_tokens)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
     latency_ms = usage.get("latency_ms", int((time.perf_counter() - start) * 1000.0))
-    cost = estimate_cost(usage)
+    cost = estimate_cost(usage, config=llm_config)
 
     # Normalize parsed
     answer = str(parsed.get("answer", "")).strip()
@@ -58,6 +60,6 @@ async def query(req: QueryRequest):
             "completion_tokens": int(usage.get("completion_tokens", 0)),
             "total_tokens": int(usage.get("total_tokens", 0)),
             "estimated_cost_usd": cost,
-            "model": settings.OPENAI_MODEL,
+            "model": llm_config.model,
         },
     }

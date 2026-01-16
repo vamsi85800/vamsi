@@ -8,8 +8,8 @@ client = TestClient(app)
 
 
 def test_query_endpoint(monkeypatch):
-    async def fake_call_llm(question: str, max_tokens=None):
-        # Accept optional max_tokens and ignore for this test
+    async def fake_call_llm(question: str, config=None, system_prompt=None, max_tokens=None):
+        # Accept optional parameters
         parsed = {"answer": "Reset your password via Settings > Security.", "confidence": 0.92, "actions": ["Send reset link", "Verify identity"]}
         usage = {"prompt_tokens": 10, "completion_tokens": 50, "total_tokens": 60, "latency_ms": 123}
         return parsed, usage
@@ -28,7 +28,7 @@ def test_query_endpoint(monkeypatch):
 
 
 def test_max_tokens_forwarded(monkeypatch):
-    async def fake_call_llm(question: str, max_tokens=None):
+    async def fake_call_llm(question: str, config=None, system_prompt=None, max_tokens=None):
         # Ensure the max_tokens value is forwarded from the API layer
         assert max_tokens == 8
         parsed = {"answer": "ok", "confidence": 0.5, "actions": []}
@@ -45,7 +45,7 @@ def test_max_tokens_forwarded(monkeypatch):
 
 
 def test_estimate_cost():
+    config = llm.LLMConfig()
     usage = {"prompt_tokens": 1000, "completion_tokens": 500}
-    cost = llm.estimate_cost(usage)
-    # default costs in .env.example: 0.03 for prompt and 0.06 for completion
+    cost = llm.estimate_cost(usage, config=config)
     assert cost == pytest.approx((1000/1000)*0.03 + (500/1000)*0.06, rel=1e-6)

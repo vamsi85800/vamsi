@@ -1,38 +1,33 @@
 import json
+import os
 import re
 import time
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-try:
-    # pydantic v2 moved BaseSettings to pydantic-settings package
-    from pydantic import BaseSettings  # type: ignore
-except Exception:
-    from pydantic_settings import BaseSettings  # type: ignore
+
+from .prompts import SYSTEM_PROMPT
 
 
-class Settings(BaseSettings):
-    # OPENAI_API_KEY is optional for local tests; set via env var or GitHub secret for real runs
-    OPENAI_API_KEY: str | None = None
-    OPENAI_API_BASE: str = "https://api.openai.com/v1"
-    OPENAI_MODEL: str = "gpt-4o-mini"
-    COST_PROMPT_PER_1K: float = 0.03
-    COST_COMPLETION_PER_1K: float = 0.06
-    DEFAULT_MAX_TOKENS: int = 512
-
-    class Config:
-        # Avoid auto-reading .env files to keep tests simple and avoid encoding issues
-        env_file = None
-
-
-settings = Settings()
-
-SYSTEM_PROMPT = (
-    "You are an assistant that must respond with a single JSON object only. "
-    'Given a user question, return a JSON object with keys: "answer" (short string), '
-    '"confidence" (a float between 0 and 1), and "actions" (an array of short '
-    'recommended action strings). Do not include any other text or explanation.'
-)
+class LLMConfig:
+    """Configuration for LLM client."""
+    
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        api_base: str = "https://api.openai.com/v1",
+        model: str = "gpt-4o-mini",
+        cost_prompt_per_1k: float = 0.03,
+        cost_completion_per_1k: float = 0.06,
+        default_max_tokens: int = 512,
+    ):
+        # Get API key from parameter or environment variable
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_base = api_base
+        self.model = model
+        self.cost_prompt_per_1k = cost_prompt_per_1k
+        self.cost_completion_per_1k = cost_completion_per_1k
+        self.default_max_tokens = default_max_tokens
 
 
 def _extract_json(s: str) -> Any:
@@ -53,24 +48,36 @@ def _extract_json(s: str) -> Any:
     return None
 
 
-async def call_llm(question: str, max_tokens: int | None = None) -> Tuple[Dict[str, Any], Dict[str, int]]:
+async def call_llm(
+    question: str,
+    config: Optional[LLMConfig] = None,
+    system_prompt: str = SYSTEM_PROMPT,
+    max_tokens: Optional[int] = None,
+) -> Tuple[Dict[str, Any], Dict[str, int]]:
     """Call the OpenAI chat/completions endpoint and return parsed JSON and token usage.
 
-    If `max_tokens` is provided it will be passed to the LLM to limit completion length.
+    Args:
+        question: The user question to ask the LLM.
+        config: LLMConfig instance. If None, creates one from environment variables.
+        system_prompt: System prompt to use. Defaults to SYSTEM_PROMPT.
+        max_tokens: Optional max tokens limit for completion.
 
     Returns:
       - parsed response (dict with keys answer, confidence, actions)
-      - usage dict: {'prompt_tokens': int, 'completion_tokens': int, 'total_tokens': int}
+      - usage dict: {'prompt_tokens': int, 'completion_tokens': int, 'total_tokens': int, 'latency_ms': int}
     """
-    url = f"{settings.OPENAI_API_BASE}/chat/completions"
-    headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+    if config is None:
+        config = LLMConfig()
+    
+    url = f"{config.api_base}/chat/completions"
+    headers = {"Authorization": f"Bearer {config.api_key}"}
 
-    max_tokens_value = int(max_tokens) if max_tokens is not None else int(settings.DEFAULT_MAX_TOKENS)
+    max_tokens_value = int(max_tokens) if max_tokens is not None else int(config.default_max_tokens)
 
     payload = {
-        "model": settings.OPENAI_MODEL,
+        "model": config.model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},
         ],
         "temperature": 0.0,
@@ -115,7 +122,19 @@ async def call_llm(question: str, max_tokens: int | None = None) -> Tuple[Dict[s
     return parsed, usage_dict
 
 
-def estimate_cost(usage: Dict[str, int]) -> float:
-    prompt_cost = (usage.get("prompt_tokens", 0) / 1000.0) * settings.COST_PROMPT_PER_1K
-    completion_cost = (usage.get("completion_tokens", 0) / 1000.0) * settings.COST_COMPLETION_PER_1K
+def estimate_cost(usage: Dict[str, int], config: Optional[LLMConfig] = None) -> float:
+    """Estimate the cost of the LLM call based on token usage.
+    
+    Args:
+        usage: Dictionary with keys 'prompt_tokens' and 'completion_tokens'.
+        config: LLMConfig instance. If None, creates one from environment variables.
+    
+    Returns:
+        Estimated cost in USD.
+    """
+    if config is None:
+        config = LLMConfig()
+    
+    prompt_cost = (usage.get("prompt_tokens", 0) / 1000.0) * config.cost_prompt_per_1k
+    completion_cost = (usage.get("completion_tokens", 0) / 1000.0) * config.cost_completion_per_1k
     return round(prompt_cost + completion_cost, 8)
